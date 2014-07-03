@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/cayley/config"
 	"github.com/google/cayley/graph"
+	"github.com/google/cayley/graph/cassandra"
 	"github.com/google/cayley/graph/leveldb"
 	"github.com/google/cayley/graph/memstore"
 	"github.com/google/cayley/graph/mongo"
@@ -31,6 +32,8 @@ func Open(cfg *config.Config) graph.TripleStore {
 		return mongo.NewTripleStore(cfg.DatabasePath, cfg.DatabaseOptions)
 	case "leveldb":
 		return leveldb.NewTripleStore(cfg.DatabasePath, cfg.DatabaseOptions)
+	case "cassandra":
+		return cassandra.NewTripleStore(cfg.DatabasePath, cfg.DatabaseOptions)
 	case "mem":
 		ts := memstore.NewTripleStore()
 		Load(ts, cfg, cfg.DatabasePath, true)

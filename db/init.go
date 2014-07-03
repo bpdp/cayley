@@ -16,6 +16,7 @@ package db
 
 import (
 	"github.com/google/cayley/config"
+	"github.com/google/cayley/graph/cassandra"
 	"github.com/google/cayley/graph/leveldb"
 	"github.com/google/cayley/graph/mongo"
 )
@@ -26,6 +27,8 @@ func Init(cfg *config.Config, triplePath string) bool {
 	switch cfg.DatabaseType {
 	case "mongo", "mongodb":
 		created = mongo.CreateNewMongoGraph(dbpath, cfg.DatabaseOptions)
+	case "cassandra":
+		created = cassandra.CreateNewCassandraGraph(dbpath, cfg.DatabaseOptions)
 	case "leveldb":
 		created = leveldb.CreateNewLevelDB(dbpath)
 	case "mem":

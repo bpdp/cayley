@@ -33,6 +33,8 @@ func Load(ts graph.TripleStore, cfg *config.Config, triplePath string, firstTime
 		} else {
 			LoadTriplesFromFileInto(ts, triplePath, cfg.LoadSize)
 		}
+	case "cassandra":
+		LoadTriplesFromFileInto(ts, triplePath, cfg.LoadSize)
 	case "leveldb":
 		LoadTriplesFromFileInto(ts, triplePath, cfg.LoadSize)
 	case "mem":
