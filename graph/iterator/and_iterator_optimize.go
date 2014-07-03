@@ -17,6 +17,7 @@ package iterator
 import (
 	"sort"
 
+	"github.com/barakmich/glog"
 	"github.com/google/cayley/graph"
 )
 
@@ -168,6 +169,9 @@ func optimizeOrder(its []graph.Iterator) []graph.Iterator {
 		}
 	}
 
+	if best == nil {
+		glog.Error("Apparently, there are no iterators that CanNext() in this And.")
+	}
 	// TODO(barakmich): Optimization of order need not stop here. Picking a smart
 	// Check() order based on probability of getting a false Check() first is
 	// useful (fail faster).
@@ -191,9 +195,15 @@ func optimizeOrder(its []graph.Iterator) []graph.Iterator {
 
 type byCost []graph.Iterator
 
-func (c byCost) Len() int           { return len(c) }
-func (c byCost) Less(i, j int) bool { return c[i].Stats().CheckCost < c[j].Stats().CheckCost }
-func (c byCost) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
+func (c byCost) Len() int { return len(c) }
+func (c byCost) Less(i, j int) bool {
+	glog.Error(c[i].DebugString(0))
+	glog.Error(c[j].DebugString(0))
+	a := c[i].Stats().CheckCost
+	b := c[j].Stats().CheckCost
+	return a < b
+}
+func (c byCost) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
 
 // optimizeCheck(l) creates an alternate check list, containing the same contents
 // but with a new ordering, however it wishes.
