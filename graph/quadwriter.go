@@ -23,8 +23,10 @@ package graph
 
 import (
 	"errors"
-	"time"
 	"flag"
+	"time"
+
+	"github.com/julienschmidt/httprouter"
 
 	"github.com/google/cayley/quad"
 )
@@ -64,7 +66,7 @@ var (
 )
 
 var (
-	IgnoreDup = flag.Bool("ignoredup", false, "Don't stop loading on duplicated key on add")
+	IgnoreDup     = flag.Bool("ignoredup", false, "Don't stop loading on duplicated key on add")
 	IgnoreMissing = flag.Bool("ignoremissing", false, "Don't stop loading on missing key on delete")
 )
 
@@ -78,6 +80,9 @@ type QuadWriter interface {
 	// Removes a quad matching the given one  from the database,
 	// if it exists. Does nothing otherwise.
 	RemoveQuad(quad.Quad) error
+
+	// Optionally attach methods to the HTTP listener.
+	RegisterHTTP(r *httprouter.Router)
 
 	// Cleans up replication and closes the writing aspect of the database.
 	Close() error

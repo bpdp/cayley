@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -39,13 +40,7 @@ type Master struct {
 	ignoreOpts graph.IgnoreOpts
 	lock       sync.Mutex
 	replicas   []ReplicaData
-}
-
-type ReplicaData struct {
-	Protocol       string
-	Address        string
-	InitialHorizon string
-	horizon        graph.PrimaryKey
+	listenAddr *url.URL
 }
 
 func NewMasterReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWriter, error) {
@@ -55,15 +50,23 @@ func NewMasterReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWri
 		qs:         qs,
 		ignoreOpts: ignoreOpts,
 	}
-	if addr, ok := opts.StringKey("listen_address"); ok {
+	if addr, ok := opts.StringKey("listen_url"); ok {
 		if addr != "" {
-			m.makeAndRunListener(addr)
+			url, err := url.Parse(addr)
+			if err != nil {
+				return nil, err
+			}
+			m.listenAddr = url
+			m.makeAndRunListener()
 		}
 	}
 	return m, nil
 }
 
-func (m *Master) makeAndRunListener(addr string) {
+func (m *Master) makeAndRunListener() {
+	if m.listenAddr == nil {
+		panic("Undefined listenAddr")
+	}
 	// Make endpoint.
 	// TODO(barakmich): Potential for non-http registration endpoints.
 	// Seems unlikely, as this is a one-time registration.
@@ -74,6 +77,12 @@ func (m *Master) makeAndRunListener(addr string) {
 }
 
 func (m *Master) RegisterHTTP(r *httprouter.Router) {
+	if m.listenAddr == nil {
+		m.registerHTTP(r)
+	}
+}
+
+func (m *Master) registerHTTP(r *httprouter.Router) {
 	r.POST("/api/v1/replication/register", m.registerReplica)
 }
 

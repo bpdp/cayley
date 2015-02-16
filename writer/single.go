@@ -17,6 +17,8 @@ package writer
 import (
 	"time"
 
+	"github.com/julienschmidt/httprouter"
+
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
 )
@@ -65,6 +67,9 @@ func (s *Single) AddQuadSet(set []quad.Quad) error {
 	return s.qs.ApplyDeltas(deltas, s.ignoreOpts)
 }
 
+func (s *Single) RegisterHTTP(r *httprouter.Router) {
+	// Noop
+}
 func (s *Single) RemoveQuad(q quad.Quad) error {
 	deltas := make([]graph.Delta, 1)
 	deltas[0] = graph.Delta{
