@@ -15,9 +15,11 @@
 package keys
 
 import (
-	"github.com/google/cayley/graph"
+	"fmt"
 	"strconv"
 	"sync"
+
+	"github.com/google/cayley/graph"
 )
 
 type Sequential struct {
@@ -48,4 +50,8 @@ func (s *Sequential) Int() int64 {
 
 func (s *Sequential) String() string {
 	return strconv.FormatInt(s.nextID, 10)
+}
+
+func (s *Sequential) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s:%d\"", "sequential", s.nextID)), nil
 }

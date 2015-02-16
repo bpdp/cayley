@@ -17,6 +17,10 @@ package graph
 // Defines the PrimaryKey interface, this abstracts the generation of IDs
 
 type PrimaryKey interface {
+	// TODO(barakmich): PrimaryKey should be in the Ord typeclass (ie,
+	// implement LessThan) this relates to the returning of Int(); I need
+	// to be able to guarantee that Int() is ordered.
+
 	// Returns a new unique primary key
 	Next() PrimaryKey
 
@@ -25,4 +29,7 @@ type PrimaryKey interface {
 
 	// Get the string format
 	String() string
+
+	// Implement a marshaller
+	MarshalJSON() ([]byte, error)
 }

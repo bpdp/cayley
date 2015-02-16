@@ -26,33 +26,17 @@ func init() {
 }
 
 type Single struct {
-	currentID        graph.PrimaryKey
-	qs               graph.QuadStore
-	ignoreOpts       graph.IgnoreOpts
+	currentID  graph.PrimaryKey
+	qs         graph.QuadStore
+	ignoreOpts graph.IgnoreOpts
 }
 
 func NewSingleReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWriter, error) {
-	var ignoreMissing, ignoreDuplicate bool
-
-	if *graph.IgnoreMissing{
-		ignoreMissing = true
-	}else{
-		ignoreMissing,_ = opts.BoolKey("ignore_missing")
-	}
-
-	if *graph.IgnoreDup{
-		ignoreDuplicate = true
-	}else{
-		ignoreDuplicate,_ = opts.BoolKey("ignore_duplicate")
-	}
-
+	ignoreOpts := fillIgnoreOpts(opts)
 	return &Single{
-		currentID: qs.Horizon(), 
-		qs: qs, 
-		ignoreOpts: graph.IgnoreOpts{
-			IgnoreDup: ignoreDuplicate, 
-			IgnoreMissing:ignoreMissing,
-		},
+		currentID:  qs.Horizon(),
+		qs:         qs,
+		ignoreOpts: ignoreOpts,
 	}, nil
 }
 
@@ -77,7 +61,7 @@ func (s *Single) AddQuadSet(set []quad.Quad) error {
 			Timestamp: time.Now(),
 		}
 	}
-	
+
 	return s.qs.ApplyDeltas(deltas, s.ignoreOpts)
 }
 
