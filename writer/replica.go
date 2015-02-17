@@ -15,11 +15,14 @@
 package writer
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sync"
 
+	"github.com/barakmich/glog"
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/google/cayley/graph"
@@ -35,9 +38,8 @@ type Replica struct {
 	qs              graph.QuadStore
 	ignoreOpts      graph.IgnoreOpts
 	lock            sync.Mutex
-	incomingUpdates []ReplicaUpdate
+	incomingUpdates []QuadUpdate
 	master          masterConnection
-	masterAddr      *url.URL
 	listenAddr      *url.URL
 }
 
@@ -57,7 +59,7 @@ func NewReplicaReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWr
 		if err != nil {
 			return nil, err
 		}
-		r.masterAddr = url
+		r.master.addr = url
 	} else {
 		return nil, fmt.Errorf("No `master_url` passed in configuration to a replica.")
 	}
@@ -96,40 +98,83 @@ func (rep *Replica) registerHTTP(r *httprouter.Router) {
 }
 
 func (rep *Replica) replicaWrite(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-}
-
-func (rep *Replica) masterApplyDeltas(d []graph.Delta) error {
-	return nil
-}
-
-func (rep *Replica) AddQuad(q quad.Quad) error {
-	deltas := make([]graph.Delta, 1)
-	deltas[0] = graph.Delta{
-		Quad:   q,
-		Action: graph.Add,
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
 	}
-	return rep.masterApplyDeltas(deltas)
+	var update QuadUpdate
+	err = json.Unmarshal(bodyBytes, &update)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
+	}
+	rep.lock.Lock()
+	rep.incomingUpdates = append(rep.incomingUpdates, update)
+	rep.lock.Unlock()
+	go rep.writeUpdates()
+	w.WriteHeader(200)
 }
 
-func (rep *Replica) AddQuadSet(set []quad.Quad) error {
-	deltas := make([]graph.Delta, len(set))
-	for i, q := range set {
+func (rep *Replica) writeUpdates() {
+	rep.lock.Lock()
+	defer rep.lock.Unlock()
+	if len(rep.incomingUpdates) == 0 {
+		return
+	}
+	progress := false
+	for i, up := range rep.incomingUpdates {
+		// The error occured on the master. This will go through without issue.
+		if rep.currentID.Int() == up.Start {
+			rep.localRepWrite(up)
+			progress = true
+			rep.incomingUpdates = append(rep.incomingUpdates[:i], rep.incomingUpdates[i:]...)
+		}
+	}
+	if !progress {
+		glog.Infof("replica-write: Couldn't find a useful update in %d updates. Current horizon: %d", len(rep.incomingUpdates), rep.currentID.Int())
+	}
+	if len(rep.incomingUpdates) != 0 && progress {
+		go rep.writeUpdates()
+	}
+}
+
+func (rep *Replica) localRepWrite(up QuadUpdate) {
+	deltas := make([]graph.Delta, len(up.Quads))
+	for i, q := range up.Quads {
 		deltas[i] = graph.Delta{
-			Quad:   q,
-			Action: graph.Add,
+			ID:        rep.currentID.Next(),
+			Quad:      q,
+			Action:    up.Action,
+			Timestamp: up.Timestamp,
 		}
 	}
 
-	return rep.masterApplyDeltas(deltas)
+	rep.qs.ApplyDeltas(deltas, rep.ignoreOpts)
+}
+
+func (rep *Replica) masterApply(quads []quad.Quad, action graph.Procedure) error {
+	update := QuadUpdate{
+		Quads:  quads,
+		Action: action,
+	}
+	bytes, err := json.Marshal(update)
+	if err != nil {
+		return err
+	}
+	return rep.master.sendToMaster(bytes)
+}
+
+func (rep *Replica) AddQuad(q quad.Quad) error {
+	return rep.masterApply([]quad.Quad{q}, graph.Add)
+}
+
+func (rep *Replica) AddQuadSet(set []quad.Quad) error {
+	return rep.masterApply(set, graph.Add)
 }
 
 func (rep *Replica) RemoveQuad(q quad.Quad) error {
-	deltas := make([]graph.Delta, 1)
-	deltas[0] = graph.Delta{
-		Quad:   q,
-		Action: graph.Delete,
-	}
-	return rep.masterApplyDeltas(deltas)
+	return rep.masterApply([]quad.Quad{q}, graph.Delete)
 }
 
 func (rep *Replica) Close() error {

@@ -26,7 +26,6 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/google/cayley/graph"
-	"github.com/google/cayley/keys"
 	"github.com/google/cayley/quad"
 )
 
@@ -84,6 +83,7 @@ func (m *Master) RegisterHTTP(r *httprouter.Router) {
 
 func (m *Master) registerHTTP(r *httprouter.Router) {
 	r.POST("/api/v1/replication/register", m.registerReplica)
+	r.POST("/api/v1/replication/write", m.writeFromReplica)
 }
 
 func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -98,62 +98,133 @@ func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params 
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
 		return
 	}
-	newReplica.horizon, err = keys.MakePrimaryKey(newReplica.InitialHorizon)
+	m.lock.Lock()
+	m.replicas = append(m.replicas, newReplica)
+	m.lock.Unlock()
+	if newReplica.Horizon < m.currentID.Int() {
+		newReplica.updateReplica(newReplica.Horizon, m.currentID.Int())
+	}
+}
+
+func (m *Master) writeFromReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
+	}
+	var update QuadUpdate
+	err = json.Unmarshal(bodyBytes, &update)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
 		return
 	}
 	m.lock.Lock()
-	m.replicas = append(m.replicas, newReplica)
-	m.lock.Unlock()
-	if newReplica.horizon.Int() < m.currentID.Int() {
-		newReplica.updateReplica(newReplica.horizon, m.currentID)
+	defer m.lock.Unlock()
+	if update.Action == graph.Add {
+		err := m.AddQuadSet(update.Quads)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+			return
+		}
+	} else if update.Action == graph.Delete {
+		for _, q := range update.Quads {
+			err := m.RemoveQuad(q)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+				return
+			}
+		}
 	}
+	http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", "Invalid action?"), 400)
+	return
 }
 
 func (m *Master) AddQuad(q quad.Quad) error {
+	start := m.currentID
 	deltas := make([]graph.Delta, 1)
+	timestamp := time.Now()
 	deltas[0] = graph.Delta{
 		ID:        m.currentID.Next(),
 		Quad:      q,
 		Action:    graph.Add,
-		Timestamp: time.Now(),
+		Timestamp: timestamp,
 	}
-	return m.qs.ApplyDeltas(deltas, m.ignoreOpts)
+	err := m.qs.ApplyDeltas(deltas, m.ignoreOpts)
+	if err != nil {
+		return err
+	}
+	update := QuadUpdate{
+		Start:     start.Int(),
+		Quads:     []quad.Quad{q},
+		Action:    graph.Add,
+		Timestamp: timestamp,
+	}
+	return m.updateAllReplicas(update)
 }
 
 func (m *Master) AddQuadSet(set []quad.Quad) error {
+	start := m.currentID
 	deltas := make([]graph.Delta, len(set))
+	timestamp := time.Now()
 	for i, q := range set {
 		deltas[i] = graph.Delta{
 			ID:        m.currentID.Next(),
 			Quad:      q,
 			Action:    graph.Add,
-			Timestamp: time.Now(),
+			Timestamp: timestamp,
 		}
 	}
 
-	return m.qs.ApplyDeltas(deltas, m.ignoreOpts)
+	err := m.qs.ApplyDeltas(deltas, m.ignoreOpts)
+	if err != nil {
+		return err
+	}
+	update := QuadUpdate{
+		Start:     start.Int(),
+		Quads:     set,
+		Action:    graph.Add,
+		Timestamp: timestamp,
+	}
+	return m.updateAllReplicas(update)
 }
 
 func (m *Master) RemoveQuad(q quad.Quad) error {
+	start := m.currentID
 	deltas := make([]graph.Delta, 1)
+	timestamp := time.Now()
 	deltas[0] = graph.Delta{
 		ID:        m.currentID.Next(),
 		Quad:      q,
 		Action:    graph.Delete,
-		Timestamp: time.Now(),
+		Timestamp: timestamp,
 	}
-	return m.qs.ApplyDeltas(deltas, m.ignoreOpts)
+	err := m.qs.ApplyDeltas(deltas, m.ignoreOpts)
+	if err != nil {
+		return err
+	}
+	update := QuadUpdate{
+		Start:     start.Int(),
+		Quads:     []quad.Quad{q},
+		Action:    graph.Delete,
+		Timestamp: timestamp,
+	}
+	return m.updateAllReplicas(update)
 }
 
-func (m *Master) updateAllReplicas(set []quad.Quad) {
-
+func (m *Master) updateAllReplicas(update QuadUpdate) error {
+	bytes, err := json.Marshal(update)
+	if err != nil {
+		return err
+	}
+	for _, l := range m.replicas {
+		l.sendToReplica(bytes)
+	}
+	return nil
 }
 
 func (m *Master) Close() error {
 	return nil
 }
 
-func (r *ReplicaData) updateReplica(from, to graph.PrimaryKey) {
+func (r *ReplicaData) updateReplica(from, to int64) {
 }
