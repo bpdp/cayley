@@ -130,14 +130,22 @@ func (rep *Replica) writeUpdates() {
 	progress := false
 	for i, up := range rep.incomingUpdates {
 		// The error occured on the master. This will go through without issue.
+		if glog.V(4) {
+			glog.V(4).Infof("writeUpdate at %d", up.Start)
+		}
 		if rep.currentID.Int() == up.Start {
+			glog.V(2).Infof("Writing replica write from %d to %d", up.Start, up.Start+int64(len(up.Quads)))
 			rep.localRepWrite(up)
 			progress = true
-			rep.incomingUpdates = append(rep.incomingUpdates[:i], rep.incomingUpdates[i:]...)
+			rep.incomingUpdates = append(rep.incomingUpdates[:i], rep.incomingUpdates[i+1:]...)
+		} else if rep.currentID.Int() > up.Start {
+			glog.Infoln("removing apparently stale data starting at", up.Start)
+			rep.incomingUpdates = append(rep.incomingUpdates[:i], rep.incomingUpdates[i+1:]...)
 		}
 	}
 	if !progress {
 		glog.Infof("replica-write: Couldn't find a useful update in %d updates. Current horizon: %d", len(rep.incomingUpdates), rep.currentID.Int())
+		return
 	}
 	if len(rep.incomingUpdates) != 0 && progress {
 		go rep.writeUpdates()

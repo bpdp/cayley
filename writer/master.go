@@ -149,7 +149,7 @@ func (m *Master) writeFromReplica(w http.ResponseWriter, r *http.Request, params
 }
 
 func (m *Master) AddQuad(q quad.Quad) error {
-	start := m.currentID
+	start := m.currentID.Int()
 	deltas := make([]graph.Delta, 1)
 	timestamp := time.Now()
 	deltas[0] = graph.Delta{
@@ -163,7 +163,7 @@ func (m *Master) AddQuad(q quad.Quad) error {
 		return err
 	}
 	update := QuadUpdate{
-		Start:     start.Int(),
+		Start:     start,
 		Quads:     []quad.Quad{q},
 		Action:    graph.Add,
 		Timestamp: timestamp,
@@ -172,7 +172,7 @@ func (m *Master) AddQuad(q quad.Quad) error {
 }
 
 func (m *Master) AddQuadSet(set []quad.Quad) error {
-	start := m.currentID
+	start := m.currentID.Int()
 	deltas := make([]graph.Delta, len(set))
 	timestamp := time.Now()
 	for i, q := range set {
@@ -189,7 +189,7 @@ func (m *Master) AddQuadSet(set []quad.Quad) error {
 		return err
 	}
 	update := QuadUpdate{
-		Start:     start.Int(),
+		Start:     start,
 		Quads:     set,
 		Action:    graph.Add,
 		Timestamp: timestamp,
@@ -198,7 +198,7 @@ func (m *Master) AddQuadSet(set []quad.Quad) error {
 }
 
 func (m *Master) RemoveQuad(q quad.Quad) error {
-	start := m.currentID
+	start := m.currentID.Int()
 	deltas := make([]graph.Delta, 1)
 	timestamp := time.Now()
 	deltas[0] = graph.Delta{
@@ -212,7 +212,7 @@ func (m *Master) RemoveQuad(q quad.Quad) error {
 		return err
 	}
 	update := QuadUpdate{
-		Start:     start.Int(),
+		Start:     start,
 		Quads:     []quad.Quad{q},
 		Action:    graph.Delete,
 		Timestamp: timestamp,
