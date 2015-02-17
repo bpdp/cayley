@@ -96,7 +96,8 @@ func (rep *Replica) RegisterHTTP(r *httprouter.Router, url *url.URL) {
 
 func (rep *Replica) registerHTTP(r *httprouter.Router, url *url.URL) {
 	r.POST("/api/v1/replication/write", rep.replicaWrite)
-	err := rep.master.registerMaster(rep, url)
+	rep.master.ourURL = url
+	err := rep.master.registerMaster(rep, "connect")
 	if err != nil {
 		glog.Fatalln("replica:", err, rep, url)
 	}
@@ -191,5 +192,9 @@ func (rep *Replica) RemoveQuad(q quad.Quad) error {
 }
 
 func (rep *Replica) Close() error {
+	err := rep.master.registerMaster(rep, "close")
+	if err != nil {
+		return err
+	}
 	return nil
 }

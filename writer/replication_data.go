@@ -39,6 +39,7 @@ type ReplicaData struct {
 	Address string
 	addr    *url.URL
 	Horizon int64
+	Status  string
 }
 
 func (r *ReplicaData) sendToReplica(data []byte) error {
@@ -62,7 +63,8 @@ func (r *ReplicaData) sendToReplica(data []byte) error {
 }
 
 type masterConnection struct {
-	addr *url.URL
+	addr   *url.URL
+	ourURL *url.URL
 }
 
 func (m masterConnection) sendToMaster(data []byte) error {
@@ -89,10 +91,11 @@ type errorMsg struct {
 	Err string `json:"error"`
 }
 
-func (m masterConnection) registerMaster(rep *Replica, url *url.URL) error {
+func (m masterConnection) registerMaster(rep *Replica, status string) error {
 	repData := &ReplicaData{
-		Address: url.String(),
+		Address: m.ourURL.String(),
 		Horizon: rep.currentID.Int(),
+		Status:  status,
 	}
 	fmt.Println("Got URL", m.addr)
 	data, err := json.Marshal(repData)

@@ -104,11 +104,22 @@ func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params 
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
 		return
 	}
-	if glog.V(2) {
-		glog.V(2).Infof("New replica at %s", newReplica.addr.String())
-	}
 	m.lock.Lock()
-	m.replicas = append(m.replicas, newReplica)
+	if newReplica.Status == "connect" {
+		m.replicas = append(m.replicas, newReplica)
+		if glog.V(2) {
+			glog.V(2).Infof("New replica at %s", newReplica.addr.String())
+		}
+	} else if newReplica.Status == "close" {
+		if glog.V(2) {
+			glog.V(2).Infof("Closing replica at %s", newReplica.addr.String())
+		}
+		for i, r := range m.replicas {
+			if r.addr.String() == newReplica.addr.String() {
+				m.replicas = append(m.replicas[:i], m.replicas[i+1:]...)
+			}
+		}
+	}
 	m.lock.Unlock()
 	if newReplica.Horizon < m.currentID.Int() {
 		newReplica.updateReplica(newReplica.Horizon, m.currentID.Int())
