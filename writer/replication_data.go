@@ -16,10 +16,13 @@ package writer
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/barakmich/glog"
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
@@ -45,7 +48,7 @@ func (r *ReplicaData) sendToReplica(data []byte) error {
 		if err != nil {
 			return err
 		}
-		resp, err := http.Post(outurl.RequestURI(), "application/json", bytes.NewBuffer(data))
+		resp, err := http.Post(outurl.String(), "application/json", bytes.NewBuffer(data))
 		if err != nil {
 			// TODO(barakmich): More interesting error handling here
 			return err
@@ -69,7 +72,7 @@ func (m masterConnection) sendToMaster(data []byte) error {
 		if err != nil {
 			return err
 		}
-		resp, err := http.Post(outurl.RequestURI(), "application/json", bytes.NewBuffer(data))
+		resp, err := http.Post(outurl.String(), "application/json", bytes.NewBuffer(data))
 		if err != nil {
 			// TODO(barakmich): More interesting error handling here
 			return err
@@ -80,4 +83,38 @@ func (m masterConnection) sendToMaster(data []byte) error {
 
 	}
 	return nil
+}
+
+type errorMsg struct {
+	Err string `json:"error"`
+}
+
+func (m masterConnection) registerMaster(rep *Replica, url *url.URL) error {
+	repData := &ReplicaData{
+		Address: url.String(),
+		Horizon: rep.currentID.Int(),
+	}
+	fmt.Println("Got URL", m.addr)
+	data, err := json.Marshal(repData)
+	if err != nil {
+		return err
+	}
+	outurl, err := m.addr.Parse("/api/v1/replication/register")
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post(outurl.String(), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		var errmsg errorMsg
+		defer resp.Body.Close()
+		enc := json.NewDecoder(resp.Body)
+		enc.Decode(&errmsg)
+		glog.Errorf("error registering: %s", errmsg.Err)
+		return fmt.Errorf("%s", errmsg.Err)
+	}
+	return nil
+
 }

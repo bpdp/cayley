@@ -74,6 +74,7 @@ func NewReplicaReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWr
 			r.makeAndRunListener()
 		}
 	}
+
 	return r, nil
 }
 
@@ -87,14 +88,18 @@ func (rep *Replica) makeAndRunListener() {
 	}()
 }
 
-func (rep *Replica) RegisterHTTP(r *httprouter.Router) {
+func (rep *Replica) RegisterHTTP(r *httprouter.Router, url *url.URL) {
 	if rep.listenAddr == nil {
-		rep.registerHTTP(r)
+		rep.registerHTTP(r, url)
 	}
 }
 
-func (rep *Replica) registerHTTP(r *httprouter.Router) {
+func (rep *Replica) registerHTTP(r *httprouter.Router, url *url.URL) {
 	r.POST("/api/v1/replication/write", rep.replicaWrite)
+	err := rep.master.registerMaster(rep, url)
+	if err != nil {
+		glog.Fatalln("replica:", err, rep, url)
+	}
 }
 
 func (rep *Replica) replicaWrite(w http.ResponseWriter, r *http.Request, params httprouter.Params) {

@@ -24,6 +24,7 @@ package graph
 import (
 	"errors"
 	"flag"
+	"net/url"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -82,7 +83,7 @@ type QuadWriter interface {
 	RemoveQuad(quad.Quad) error
 
 	// Optionally attach methods to the HTTP listener.
-	RegisterHTTP(r *httprouter.Router)
+	RegisterHTTP(r *httprouter.Router, url *url.URL)
 
 	// Cleans up replication and closes the writing aspect of the database.
 	Close() error

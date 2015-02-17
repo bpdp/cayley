@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/barakmich/glog"
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/google/cayley/graph"
@@ -75,7 +76,7 @@ func (m *Master) makeAndRunListener() {
 	}()
 }
 
-func (m *Master) RegisterHTTP(r *httprouter.Router) {
+func (m *Master) RegisterHTTP(r *httprouter.Router, url *url.URL) {
 	if m.listenAddr == nil {
 		m.registerHTTP(r)
 	}
@@ -97,6 +98,14 @@ func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params 
 	if err != nil {
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
 		return
+	}
+	newReplica.addr, err = url.Parse(newReplica.Address)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
+	}
+	if glog.V(2) {
+		glog.V(2).Infof("New replica at %s", newReplica.addr.String())
 	}
 	m.lock.Lock()
 	m.replicas = append(m.replicas, newReplica)

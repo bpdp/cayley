@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -112,6 +113,11 @@ func (api *API) APIv1(r *httprouter.Router) {
 	r.POST("/api/v1/write/file/nquad", LogRequest(api.ServeV1WriteNQuad))
 	//TODO(barakmich): /write/text/nquad, which reads from request.body instead of HTML5 file form?
 	r.POST("/api/v1/delete", LogRequest(api.ServeV1Delete))
+	url, err := url.Parse(fmt.Sprintf("http://%s:%s/", api.config.ListenHost, api.config.ListenPort))
+	if err != nil {
+		glog.Fatalln("Couldn't put together a url from host and port:", err)
+	}
+	api.handle.QuadWriter.RegisterHTTP(r, url)
 }
 
 func SetupRoutes(handle *graph.Handle, cfg *config.Config) {

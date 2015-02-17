@@ -15,6 +15,7 @@
 package writer
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -67,7 +68,7 @@ func (s *Single) AddQuadSet(set []quad.Quad) error {
 	return s.qs.ApplyDeltas(deltas, s.ignoreOpts)
 }
 
-func (s *Single) RegisterHTTP(r *httprouter.Router) {
+func (s *Single) RegisterHTTP(r *httprouter.Router, url *url.URL) {
 	// Noop
 }
 func (s *Single) RemoveQuad(q quad.Quad) error {

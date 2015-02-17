@@ -294,7 +294,6 @@ func decompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string
 	if err != nil {
 		return err
 	}
-
 	var dec quad.Unmarshaler
 	switch typ {
 	case "cquad":
@@ -321,6 +320,9 @@ func decompressor(r io.Reader) (io.Reader, error) {
 	br := bufio.NewReader(r)
 	buf, err := br.Peek(3)
 	if err != nil {
+		if err == io.EOF {
+			return r, nil
+		}
 		return nil, err
 	}
 	switch {

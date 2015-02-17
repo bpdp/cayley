@@ -39,10 +39,12 @@ func Init(cfg *config.Config) error {
 func Open(cfg *config.Config) (*graph.Handle, error) {
 	qs, err := OpenQuadStore(cfg)
 	if err != nil {
+		glog.Errorln("Error opening QuadStore")
 		return nil, err
 	}
 	qw, err := OpenQuadWriter(qs, cfg)
 	if err != nil {
+		glog.Errorln("Error opening QuadWriter")
 		return nil, err
 	}
 	return &graph.Handle{QuadStore: qs, QuadWriter: qw}, nil
@@ -92,10 +94,12 @@ func Load(qw graph.QuadWriter, cfg *config.Config, dec quad.Unmarshaler) error {
 			}
 		}
 	}
-	count += len(block)
-	err := qw.AddQuadSet(block)
-	if err != nil {
-		return fmt.Errorf("db: failed to load data: %v", err)
+	if len(block) != 0 {
+		count += len(block)
+		err := qw.AddQuadSet(block)
+		if err != nil {
+			return fmt.Errorf("db: failed to load data: %v", err)
+		}
 	}
 	if glog.V(2) {
 		glog.V(2).Infof("Wrote %d quads.", count)
