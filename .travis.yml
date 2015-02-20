@@ -16,6 +16,7 @@ install:
   - go get github.com/peterh/liner
   - go get github.com/robertkrimen/otto
   - go get github.com/russross/blackfriday
+  - go get github.com/stretchr/graceful
   - go get github.com/syndtr/goleveldb/leveldb
   - go get github.com/syndtr/goleveldb/leveldb/cache
   - go get github.com/syndtr/goleveldb/leveldb/iterator

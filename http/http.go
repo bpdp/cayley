@@ -25,6 +25,7 @@ import (
 
 	"github.com/barakmich/glog"
 	"github.com/julienschmidt/httprouter"
+	"github.com/stretchr/graceful"
 
 	"github.com/google/cayley/config"
 	"github.com/google/cayley/graph"
@@ -120,7 +121,7 @@ func (api *API) APIv1(r *httprouter.Router) {
 	api.handle.QuadWriter.RegisterHTTP(r, url)
 }
 
-func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
+func SetupRoutes(handle *graph.Handle, cfg *config.Config) *http.ServeMux {
 	r := httprouter.New()
 	assets := findAssetsPath()
 	if glog.V(2) {
@@ -138,17 +139,24 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	r.GET("/docs/:docpage", docs.ServeHTTP)
 	r.GET("/ui/:ui_type", root.ServeHTTP)
 	r.GET("/", root.ServeHTTP)
-	http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
-	http.Handle("/", r)
+	mux := http.NewServeMux()
+	mux.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
+	mux.Handle("/", r)
+	return mux
 }
 
 func Serve(handle *graph.Handle, cfg *config.Config) {
-	SetupRoutes(handle, cfg)
+	mux := SetupRoutes(handle, cfg)
 	glog.Infof("Cayley now listening on %s:%s\n", cfg.ListenHost, cfg.ListenPort)
 	fmt.Printf("Cayley now listening on %s:%s\n", cfg.ListenHost, cfg.ListenPort)
-	defer handle.Close()
-	err := http.ListenAndServe(fmt.Sprintf("%s:%s", cfg.ListenHost, cfg.ListenPort), nil)
-	if err != nil {
-		glog.Fatal("ListenAndServe: ", err)
+	srv := &graceful.Server{
+		Timeout: 5 * time.Second,
+		Server: &http.Server{
+			Addr:    fmt.Sprintf("%s:%s", cfg.ListenHost, cfg.ListenPort),
+			Handler: mux,
+		},
 	}
+	stop := srv.StopChan()
+	go srv.ListenAndServe()
+	<-stop
 }
