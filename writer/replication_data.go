@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/barakmich/glog"
 
@@ -28,11 +27,14 @@ import (
 	"github.com/google/cayley/quad"
 )
 
+type ReplicaWrite struct {
+	Quads  []quad.Quad
+	Action graph.Procedure
+}
+
 type QuadUpdate struct {
-	Start     int64
-	Quads     []quad.Quad
-	Action    graph.Procedure
-	Timestamp time.Time
+	Start  int64
+	Deltas []graph.Delta
 }
 
 type ReplicaData struct {
@@ -40,6 +42,15 @@ type ReplicaData struct {
 	addr    *url.URL
 	Horizon int64
 	Status  string
+}
+
+type MasterData struct {
+	Horizon int64
+}
+
+type CatchUpMsg struct {
+	From int64
+	Size int64
 }
 
 func (r *ReplicaData) sendToReplica(data []byte) error {
@@ -67,7 +78,7 @@ type masterConnection struct {
 	ourURL *url.URL
 }
 
-func (m masterConnection) sendToMaster(data []byte) error {
+func (m masterConnection) sendWriteToMaster(data []byte) error {
 	switch m.addr.Scheme {
 	case "http":
 		outurl, err := m.addr.Parse("/api/v1/replication/write")
@@ -91,33 +102,43 @@ type errorMsg struct {
 	Err string `json:"error"`
 }
 
+func (m masterConnection) sendCommandToMaster(api string, msg interface{}) (*json.Decoder, error) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	outurl, err := m.addr.Parse("/api/v1/replication/register")
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.Post(outurl.String(), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	dec := json.NewDecoder(resp.Body)
+	if resp.StatusCode != 200 {
+		var errmsg errorMsg
+		dec.Decode(&errmsg)
+		return nil, fmt.Errorf("%s", errmsg.Err)
+	}
+	return dec, nil
+}
+
 func (m masterConnection) registerMaster(rep *Replica, status string) error {
 	repData := &ReplicaData{
 		Address: m.ourURL.String(),
 		Horizon: rep.currentID.Int(),
 		Status:  status,
 	}
-	fmt.Println("Got URL", m.addr)
-	data, err := json.Marshal(repData)
+	dec, err := m.sendCommandToMaster("/api/v1/replication/register", repData)
 	if err != nil {
+		glog.Errorf("error registering: %s", err.Error())
 		return err
 	}
-	outurl, err := m.addr.Parse("/api/v1/replication/register")
-	if err != nil {
-		return err
-	}
-	resp, err := http.Post(outurl.String(), "application/json", bytes.NewBuffer(data))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != 200 {
-		var errmsg errorMsg
-		defer resp.Body.Close()
-		enc := json.NewDecoder(resp.Body)
-		enc.Decode(&errmsg)
-		glog.Errorf("error registering: %s", errmsg.Err)
-		return fmt.Errorf("%s", errmsg.Err)
-	}
+	var mdata MasterData
+	dec.Decode(mdata)
+	go rep.catchUp(mdata.Horizon)
 	return nil
 
 }

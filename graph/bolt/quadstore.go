@@ -43,7 +43,6 @@ var (
 	}
 	hashSize         = sha1.Size
 	localFillPercent = 0.7
-
 )
 
 type Token struct {
@@ -209,10 +208,10 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOp
 		for _, d := range deltas {
 			err := qs.buildQuadWrite(tx, d.Quad, d.ID.Int(), d.Action == graph.Add)
 			if err != nil {
-				if err == graph.ErrQuadExists && ignoreOpts.IgnoreDup{
+				if err == graph.ErrQuadExists && ignoreOpts.IgnoreDup {
 					continue
 				}
-				if err == graph.ErrQuadNotExist && ignoreOpts.IgnoreMissing{
+				if err == graph.ErrQuadNotExist && ignoreOpts.IgnoreMissing {
 					continue
 				}
 				return err
@@ -370,7 +369,9 @@ func (qs *QuadStore) Close() {
 }
 
 func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
-	var q quad.Quad
+	var q struct {
+		Quad quad.Quad
+	}
 	tok := k.(*Token)
 	err := qs.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(tok.bucket)
@@ -398,7 +399,24 @@ func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
 		glog.Error("Error getting quad: ", err)
 		return quad.Quad{}
 	}
-	return q
+	return q.Quad
+}
+
+func (qs *QuadStore) GetDelta(key graph.PrimaryKey) (graph.Delta, error) {
+	var d graph.Delta
+	err := qs.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(logBucket)
+		data := b.Get(qs.createDeltaKeyFor(key.Int()))
+		if data == nil {
+			return fmt.Errorf("Couldn't find delta")
+		}
+		return json.Unmarshal(data, &d)
+	})
+	if err != nil {
+		glog.Error("Error getting quad: ", err)
+		return graph.Delta{}, err
+	}
+	return d, nil
 }
 
 func (qs *QuadStore) ValueOf(s string) graph.Value {

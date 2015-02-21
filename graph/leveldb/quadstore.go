@@ -49,7 +49,6 @@ var (
 		New: func() interface{} { return sha1.New() },
 	}
 	hashSize = sha1.Size
-
 )
 
 type Token []byte
@@ -370,6 +369,21 @@ func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
 		return quad.Quad{}
 	}
 	return q
+}
+
+func (qs *QuadStore) GetDelta(k graph.PrimaryKey) (graph.Delta, error) {
+	var d graph.Delta
+	b, err := qs.db.Get(keyFor(graph.Delta{ID: k}), qs.readopts)
+	if err != nil {
+		glog.Errorf("Error: could not get delta at %s from DB.", k.String())
+		return graph.Delta{}, err
+	}
+	err = json.Unmarshal(b, &d)
+	if err != nil {
+		glog.Error("Error: could not reconstruct delta.")
+		return graph.Delta{}, err
+	}
+	return d, nil
 }
 
 func (qs *QuadStore) ValueOf(s string) graph.Value {

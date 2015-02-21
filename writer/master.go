@@ -27,6 +27,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/google/cayley/graph"
+	"github.com/google/cayley/keys"
 	"github.com/google/cayley/quad"
 )
 
@@ -108,8 +109,15 @@ func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params 
 	if newReplica.Status == "connect" {
 		m.replicas = append(m.replicas, newReplica)
 		if glog.V(2) {
-			glog.V(2).Infof("New replica at %s", newReplica.addr.String())
+			glog.V(2).Infof("New replica at %s with horizon %d", newReplica.addr.String(), newReplica.Horizon)
 		}
+		mbytes, err := json.Marshal(MasterData{
+			Horizon: m.currentID.Int(),
+		})
+		if err != nil {
+			panic("Marshalling known JSON data shouldn't fail.")
+		}
+		w.Write(mbytes)
 	} else if newReplica.Status == "close" {
 		if glog.V(2) {
 			glog.V(2).Infof("Closing replica at %s", newReplica.addr.String())
@@ -121,9 +129,6 @@ func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params 
 		}
 	}
 	m.lock.Unlock()
-	if newReplica.Horizon < m.currentID.Int() {
-		newReplica.updateReplica(newReplica.Horizon, m.currentID.Int())
-	}
 }
 
 func (m *Master) writeFromReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -132,7 +137,7 @@ func (m *Master) writeFromReplica(w http.ResponseWriter, r *http.Request, params
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
 		return
 	}
-	var update QuadUpdate
+	var update ReplicaWrite
 	err = json.Unmarshal(bodyBytes, &update)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
@@ -174,10 +179,8 @@ func (m *Master) AddQuad(q quad.Quad) error {
 		return err
 	}
 	update := QuadUpdate{
-		Start:     start,
-		Quads:     []quad.Quad{q},
-		Action:    graph.Add,
-		Timestamp: timestamp,
+		Start:  start,
+		Deltas: deltas,
 	}
 	return m.updateAllReplicas(update)
 }
@@ -200,10 +203,8 @@ func (m *Master) AddQuadSet(set []quad.Quad) error {
 		return err
 	}
 	update := QuadUpdate{
-		Start:     start,
-		Quads:     set,
-		Action:    graph.Add,
-		Timestamp: timestamp,
+		Start:  start,
+		Deltas: deltas,
 	}
 	return m.updateAllReplicas(update)
 }
@@ -223,10 +224,8 @@ func (m *Master) RemoveQuad(q quad.Quad) error {
 		return err
 	}
 	update := QuadUpdate{
-		Start:     start,
-		Quads:     []quad.Quad{q},
-		Action:    graph.Delete,
-		Timestamp: timestamp,
+		Start:  start,
+		Deltas: deltas,
 	}
 	return m.updateAllReplicas(update)
 }
@@ -246,5 +245,44 @@ func (m *Master) Close() error {
 	return nil
 }
 
-func (r *ReplicaData) updateReplica(from, to int64) {
+func (m *Master) getQuadRange(c CatchUpMsg) (*QuadUpdate, error) {
+	qupdate := &QuadUpdate{}
+	qupdate.Start = c.From
+
+	for i := int64(1); i <= c.Size; i++ {
+		d, err := m.qs.GetDelta(keys.NewSequentialKey(c.From + i))
+		if err != nil {
+			return nil, err
+		}
+		qupdate.Deltas = append(qupdate.Deltas, d)
+	}
+	return qupdate, nil
+}
+
+func (m *Master) updateFromReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
+	}
+	var catchup CatchUpMsg
+	err = json.Unmarshal(bodyBytes, &catchup)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
+	}
+	if glog.V(2) {
+		glog.V(2).Infof("Replica updating from %d to %d", catchup.From, catchup.Size+catchup.From)
+	}
+
+	qupdate, err := m.getQuadRange(catchup)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
+		return
+	}
+	mbytes, err := json.Marshal(qupdate)
+	if err != nil {
+		panic("Marshalling known JSON data shouldn't fail.")
+	}
+	w.Write(mbytes)
 }

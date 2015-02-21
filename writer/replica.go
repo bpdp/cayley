@@ -29,6 +29,10 @@ import (
 	"github.com/google/cayley/quad"
 )
 
+const (
+	defaultReplicaPageSize = 10000
+)
+
 func init() {
 	graph.RegisterWriter("replica", NewReplicaReplication)
 }
@@ -41,6 +45,7 @@ type Replica struct {
 	incomingUpdates []QuadUpdate
 	master          masterConnection
 	listenAddr      *url.URL
+	pageSize        int64
 }
 
 func NewReplicaReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWriter, error) {
@@ -49,6 +54,11 @@ func NewReplicaReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWr
 		currentID:  qs.Horizon(),
 		qs:         qs,
 		ignoreOpts: ignoreOpts,
+	}
+
+	r.pageSize = defaultReplicaPageSize
+	if val, ok := opts.IntKey("replica_page_size"); ok {
+		r.pageSize = int64(val)
 	}
 
 	if addr, ok := opts.StringKey("master_url"); ok {
@@ -135,7 +145,7 @@ func (rep *Replica) writeUpdates() {
 			glog.V(4).Infof("writeUpdate at %d", up.Start)
 		}
 		if rep.currentID.Int() == up.Start {
-			glog.V(2).Infof("Writing replica write from %d to %d", up.Start, up.Start+int64(len(up.Quads)))
+			glog.V(2).Infof("Writing replica write from %d to %d", up.Start, up.Start+int64(len(up.Deltas)))
 			rep.localRepWrite(up)
 			progress = true
 			rep.incomingUpdates = append(rep.incomingUpdates[:i], rep.incomingUpdates[i+1:]...)
@@ -154,21 +164,11 @@ func (rep *Replica) writeUpdates() {
 }
 
 func (rep *Replica) localRepWrite(up QuadUpdate) {
-	deltas := make([]graph.Delta, len(up.Quads))
-	for i, q := range up.Quads {
-		deltas[i] = graph.Delta{
-			ID:        rep.currentID.Next(),
-			Quad:      q,
-			Action:    up.Action,
-			Timestamp: up.Timestamp,
-		}
-	}
-
-	rep.qs.ApplyDeltas(deltas, rep.ignoreOpts)
+	rep.qs.ApplyDeltas(up.Deltas, rep.ignoreOpts)
 }
 
 func (rep *Replica) masterApply(quads []quad.Quad, action graph.Procedure) error {
-	update := QuadUpdate{
+	update := ReplicaWrite{
 		Quads:  quads,
 		Action: action,
 	}
@@ -176,7 +176,7 @@ func (rep *Replica) masterApply(quads []quad.Quad, action graph.Procedure) error
 	if err != nil {
 		return err
 	}
-	return rep.master.sendToMaster(bytes)
+	return rep.master.sendWriteToMaster(bytes)
 }
 
 func (rep *Replica) AddQuad(q quad.Quad) error {
@@ -197,4 +197,34 @@ func (rep *Replica) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (rep *Replica) catchUp(mhorizon int64) {
+	rep.lock.Lock()
+	currentID := rep.currentID.Int()
+	rep.lock.Unlock()
+	if mhorizon < currentID {
+		glog.Fatalf("Trying to connect as a replica to a master which is behind us. MasterHorizon %d, LocalHorizon %d", mhorizon, currentID)
+	}
+	if mhorizon == currentID {
+		return
+	}
+	if mhorizon > currentID {
+		dec, err := rep.master.sendCommandToMaster(
+			"/api/v1/replication/catchup",
+			CatchUpMsg{
+				From: currentID,
+				Size: rep.pageSize,
+			})
+		if err != nil {
+			//TODO(barakmich): Drop the connection and retry.
+			glog.Fatalln(err)
+		}
+		var up QuadUpdate
+		dec.Decode(&up)
+		rep.localRepWrite(up)
+		if currentID+defaultReplicaPageSize < mhorizon {
+			go rep.catchUp(mhorizon)
+		}
+	}
 }

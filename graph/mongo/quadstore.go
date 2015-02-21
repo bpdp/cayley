@@ -20,6 +20,7 @@ import (
 	"errors"
 	"hash"
 	"sync"
+	"time"
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -228,7 +229,7 @@ func (qs *QuadStore) ApplyDeltas(in []graph.Delta, ignoreOpts graph.IgnoreOpts) 
 			if qs.checkValid(key) {
 				if ignoreOpts.IgnoreDup {
 					continue
-				}else{
+				} else {
 					return graph.ErrQuadExists
 				}
 			}
@@ -236,7 +237,7 @@ func (qs *QuadStore) ApplyDeltas(in []graph.Delta, ignoreOpts graph.IgnoreOpts) 
 			if !qs.checkValid(key) {
 				if ignoreOpts.IgnoreMissing {
 					continue
-				}else{
+				} else {
 					return graph.ErrQuadNotExist
 				}
 			}
@@ -286,6 +287,35 @@ func (qs *QuadStore) Quad(val graph.Value) quad.Quad {
 		glog.Errorf("Error: Couldn't retrieve quad %s %v", val, err)
 	}
 	return q
+}
+
+func (qs *QuadStore) GetDelta(key graph.PrimaryKey) (graph.Delta, error) {
+	var log MongoLogEntry
+	constraint := bson.M{"LogID": key.Int()}
+	err := qs.db.C("log").Find(constraint).One(&log)
+	if err != nil {
+		glog.Errorf("Could not get Delta from Mongo: %v", err)
+		return graph.Delta{}, err
+	}
+	var q quad.Quad
+	err = qs.db.C("quads").FindId(log.Key).One(&q)
+	if err != nil {
+		glog.Errorf("Error: Couldn't retrieve quad %s %v", log.Key, err)
+		return graph.Delta{}, err
+	}
+	var action graph.Procedure
+	if log.Action == "Add" {
+		action = graph.Add
+	} else {
+		action = graph.Delete
+	}
+
+	return graph.Delta{
+		ID:        keys.NewSequentialKey(log.LogID),
+		Quad:      q,
+		Action:    action,
+		Timestamp: time.Unix(0, log.Timestamp),
+	}, nil
 }
 
 func (qs *QuadStore) QuadIterator(d quad.Direction, val graph.Value) graph.Iterator {

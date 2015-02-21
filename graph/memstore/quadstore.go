@@ -106,12 +106,12 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOp
 		switch d.Action {
 		case graph.Add:
 			err = qs.AddDelta(d)
-			if err != nil && ignoreOpts.IgnoreDup{
+			if err != nil && ignoreOpts.IgnoreDup {
 				err = nil
 			}
 		case graph.Delete:
 			err = qs.RemoveDelta(d)
-			if err != nil && ignoreOpts.IgnoreMissing{
+			if err != nil && ignoreOpts.IgnoreMissing {
 				err = nil
 			}
 		default:
@@ -217,6 +217,16 @@ func (qs *QuadStore) RemoveDelta(d graph.Delta) error {
 
 func (qs *QuadStore) Quad(index graph.Value) quad.Quad {
 	return qs.log[index.(int64)].Quad
+}
+
+func (qs *QuadStore) GetDelta(key graph.PrimaryKey) (graph.Delta, error) {
+	entry := qs.log[key.Int()]
+	return graph.Delta{
+		ID:        keys.NewSequentialKey(entry.ID),
+		Quad:      entry.Quad,
+		Action:    entry.Action,
+		Timestamp: entry.Timestamp,
+	}, nil
 }
 
 func (qs *QuadStore) QuadIterator(d quad.Direction, value graph.Value) graph.Iterator {

@@ -46,6 +46,9 @@ type QuadStore interface {
 	// is done by a replication strategy.
 	ApplyDeltas([]Delta, IgnoreOpts) error
 
+	// Get the Delta for the given PrimaryKey
+	GetDelta(key PrimaryKey) (Delta, error)
+
 	// Given an opaque token, returns the quad for that token from the store.
 	Quad(Value) quad.Quad
 
