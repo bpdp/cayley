@@ -92,7 +92,7 @@ func (api *API) ServeV1WriteNQuad(w http.ResponseWriter, r *http.Request, params
 			if err == io.EOF {
 				break
 			}
-			panic("what can do this here?") // FIXME(kortschak)
+			glog.Fatalln("what can this do here? ", err)
 		}
 		block = append(block, t)
 		n++
