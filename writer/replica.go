@@ -210,18 +210,17 @@ func (rep *Replica) catchUp(mhorizon int64) {
 		return
 	}
 	if mhorizon > currentID {
-		dec, err := rep.master.sendCommandToMaster(
+		var up QuadUpdate
+		err := rep.master.sendCommandToMaster(
 			"/api/v1/replication/catchup",
 			CatchUpMsg{
 				From: currentID,
 				Size: rep.pageSize,
-			})
+			}, &up)
 		if err != nil {
 			//TODO(barakmich): Drop the connection and retry.
 			glog.Fatalln(err)
 		}
-		var up QuadUpdate
-		dec.Decode(&up)
 		rep.localRepWrite(up)
 		if currentID+defaultReplicaPageSize < mhorizon {
 			go rep.catchUp(mhorizon)

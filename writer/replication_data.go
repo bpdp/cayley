@@ -102,27 +102,31 @@ type errorMsg struct {
 	Err string `json:"error"`
 }
 
-func (m masterConnection) sendCommandToMaster(api string, msg interface{}) (*json.Decoder, error) {
+func (m masterConnection) sendCommandToMaster(api string, msg interface{}, out interface{}) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	outurl, err := m.addr.Parse("/api/v1/replication/register")
+	outurl, err := m.addr.Parse(api)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	resp, err := http.Post(outurl.String(), "application/json", bytes.NewBuffer(data))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	dec := json.NewDecoder(resp.Body)
 	if resp.StatusCode != 200 {
 		var errmsg errorMsg
 		dec.Decode(&errmsg)
-		return nil, fmt.Errorf("%s", errmsg.Err)
+		return fmt.Errorf("%s", errmsg.Err)
 	}
-	return dec, nil
+	err = dec.Decode(out)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m masterConnection) registerMaster(rep *Replica, status string) error {
@@ -131,13 +135,12 @@ func (m masterConnection) registerMaster(rep *Replica, status string) error {
 		Horizon: rep.currentID.Int(),
 		Status:  status,
 	}
-	dec, err := m.sendCommandToMaster("/api/v1/replication/register", repData)
+	var mdata MasterData
+	err := m.sendCommandToMaster("/api/v1/replication/register", repData, &mdata)
 	if err != nil {
 		glog.Errorf("error registering: %s", err.Error())
 		return err
 	}
-	var mdata MasterData
-	dec.Decode(mdata)
 	go rep.catchUp(mdata.Horizon)
 	return nil
 

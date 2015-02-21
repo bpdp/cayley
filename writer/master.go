@@ -86,6 +86,7 @@ func (m *Master) RegisterHTTP(r *httprouter.Router, url *url.URL) {
 func (m *Master) registerHTTP(r *httprouter.Router) {
 	r.POST("/api/v1/replication/register", m.registerReplica)
 	r.POST("/api/v1/replication/write", m.writeFromReplica)
+	r.POST("/api/v1/replication/catchup", m.catchupReplica)
 }
 
 func (m *Master) registerReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -259,7 +260,7 @@ func (m *Master) getQuadRange(c CatchUpMsg) (*QuadUpdate, error) {
 	return qupdate, nil
 }
 
-func (m *Master) updateFromReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (m *Master) catchupReplica(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("{\"error\" : \"%s\"}", err), 400)
