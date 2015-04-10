@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"time"
 
 	"github.com/barakmich/glog"
@@ -46,6 +47,7 @@ import (
 	_ "github.com/google/cayley/graph/leveldb"
 	_ "github.com/google/cayley/graph/memstore"
 	_ "github.com/google/cayley/graph/mongo"
+	_ "github.com/google/cayley/graph/sql"
 
 	// Load writer registry
 	_ "github.com/google/cayley/writer"
@@ -156,6 +158,15 @@ func main() {
 	cmd := os.Args[1]
 	os.Args = append(os.Args[:1], os.Args[2:]...)
 	flag.Parse()
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	var buildString string
 	if Version != "" {
